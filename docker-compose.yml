@@ -1,0 +1,43 @@
+# Composición de la clínica veterinaria: PostgreSQL y la API.
+#
+# El servicio `db` publica un volumen persistente con los datos de la clínica y
+# declara una comprobación de salud con `pg_isready`. El servicio `api` espera
+# a que esa comprobación sea satisfactoria antes de arrancar, de modo que la
+# aplicación nunca compite con el arranque de la base de datos.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: clinica
+      POSTGRES_PASSWORD: clinica
+      POSTGRES_DB: clinica
+    volumes:
+      - clinica_datos:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clinica -d clinica"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  api:
+    build: .
+    environment:
+      # Conexión al servicio de PostgreSQL de esta misma composición.
+      DATABASE_URL: postgresql+psycopg://clinica:clinica@db:5432/clinica
+      # El resto de variables se sobreescriben desde el archivo `.env` de la
+      # raíz del repositorio (plantilla en `.env.example`).
+      JWT_SECRET: ${JWT_SECRET:-cambia-esta-clave-en-produccion}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-480}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+volumes:
+  clinica_datos:
